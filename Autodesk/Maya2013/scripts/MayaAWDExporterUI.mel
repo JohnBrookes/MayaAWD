@@ -1,0 +1,225 @@
+/*
+    Tutorial available at:
+    http://nccastaff.bournemouth.ac.uk/jmacey/RobTheBloke/www/research/maya/exp_plugin.htm
+*/
+
+global proc int MayaAWDExporterUI(string $parent,
+                                    string $action,
+                                    string $settings,
+                                    string $callback )
+{
+    if ($action == "post") {
+        setParent $parent;
+        frameLayout -l "General"
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            radioButtonGrp
+                -l "Matrix storage"
+                -la2 "Optimize for size" "Optimize for accuracy" 
+                -nrb 2 -cw3 120 120 120
+                -sl 1 radWideMtx;
+
+            radioButtonGrp
+                -l "Geometry storage"
+                -la2 "Optimize for size" "Optimize for accuracy" 
+                -nrb 2 -cw3 120 120 120
+                -sl 1 radWideGeom;
+
+            optionMenu -l "Compression" optCompression;
+                menuItem -l "Uncompressed (None)";
+                menuItem -l "ZLIB/Deflate (Good)";
+                menuItem -l "LZMA (Best)"; 
+
+
+        setParent $parent;
+        frameLayout -l "Extension"
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            checkBox -label "Include user attributes" -v 0 -align "left"
+                -onc "textField -e -en true tfUserNamespace"
+                -ofc "textField -e -en false tfUserNamespace"
+                chkIncludeAttributes;
+
+            text -label "User attribute namespace:" -align "left";
+            textField -en false -tx "http://example.com/myawdns" tfUserNamespace;
+        
+        
+        setParent $parent;
+        frameLayout -l "Scene & geometries"
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            checkBox -label "Include mesh data" -v 1 -align "left" chkIncludeGeom;
+            checkBox -label "Include scenegraph" -v 1 -align "left" 
+                -onc "checkBox -e -en true chkFlatten"
+                -ofc "checkBox -e -en false chkFlatten"
+                chkIncludeScene;
+            checkBox -label "Flatten untransformed containers" -align "left" chkFlatten;
+            checkBox -label "Replace external references with empty placeholders" -align "left" chkReplaceExRefs;
+        
+        setParent $parent;
+        frameLayout -l "Materials"
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            checkBox -label "Include materials" -v 1 -align "left" 
+                -onc "checkBox -e -en true chkEmbedTex"
+                -ofc "checkBox -e -en false chkEmbedTex"
+                chkIncludeMat;
+            checkBox -label "Embed textures" -v 1 -align "left" chkEmbedTex;
+            text -align "left" -l"Transparency method:";
+            columnLayout -co "left" 20;
+                radioButtonGrp -nrb 3 -vr -cl3 "left" "left" "left" -sl 3
+                    -labelArray3 "Ignore alpha" "Use alpha blending (semi-transparency, slow)" "Binary alpha (using threshold, fast)" 
+                    -on3 "floatSliderGrp -e -en true inpAlphaThreshold"
+                    -of3 "floatSliderGrp -e -en false inpAlphaThreshold"
+                    radAlphaMethod;
+                columnLayout -co "left" 18;
+                    floatSliderGrp -cl3 "left" "left" "left" -cw3 60 25 70 -f true -l "Threshold:" -h 18 -min 0 -max 1 -v 0.5 -step 0.1 inpAlphaThreshold;
+
+        
+        setParent $parent;
+        frameLayout -l "Skeletons"
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            checkBox -label "Include skeletons" -align "left" chkIncludeSkel;
+        
+        setParent $parent;
+        frameLayout -l "Animation" 
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            checkBox -label "Include skeletal animation" 
+                -align "left" 
+                -ofc "intSliderGrp -e -en false inpJointsPerVert"
+                -onc "intSliderGrp -e -en true inpJointsPerVert"
+                chkIncludeSkelAnim;
+            flowLayout -h 30;
+                intSliderGrp -cl3 "left" "left" "left" -cw3 140 25 70 -f true -l "Max joints per vertex:" -h 20 -min 1 -max 5 -v 3 -step 1 inpJointsPerVert;
+            setParent "..";
+            checkBox -label "Include UV animation" -align "left" chkIncludeUVAnim;
+        
+            text -label "Sequence file path:" -align "left";
+            textField -tx "sequences.txt" tfSequences;
+
+        setParent $parent;
+        frameLayout -l "Cameras and lights"
+            -mw 20 -mh 20
+            -bs "etchedIn";
+            checkBox -label "Include cameras" chkIncludeCameras;
+            checkBox -label "Include lights" chkIncludeLights;
+    }
+    else if ($action == "query") { 
+        int $oi=0;
+        string $options[] = {};
+
+        if (`radioButtonGrp -q -sl radWideMtx` == 1)
+            $options[$oi] = "wide_mtx=0";
+        else
+            $options[$oi] = "wide_mtx=1";
+
+        $oi++;
+        if (`radioButtonGrp -q -sl radWideGeom` == 1)
+            $options[$oi] = "wide_geom=0";
+        else
+            $options[$oi] = "wide_geom=1";
+
+        $oi++;
+        if (`optionMenu -q -sl optCompression` == 1)
+            $options[$oi] = "compression=none";
+        else if (`optionMenu -q -sl optCompression` == 2)
+            $options[$oi] = "compression=deflate";
+        else if (`optionMenu -q -sl optCompression` == 3)
+            $options[$oi] = "compression=lzma";
+
+        $oi++;
+        if (`checkBox -q -v chkIncludeAttributes`) {
+            $options[$oi] = "inc_attr=1";
+            $oi++;
+            $options[$oi] = "attrns="+`textField -q -tx tfUserNamespace`;
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeGeom`) {
+            $options[$oi] = "inc_geom=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeScene`) {
+            $options[$oi] = "inc_scene=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkFlatten`) {
+            $options[$oi] = "flatten_untransformed=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkReplaceExRefs`) {
+            $options[$oi] = "replace_exrefs=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeMat`) {
+            $options[$oi] = "inc_materials=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkEmbedTex`) {
+            $options[$oi] = "embed_textures=1";
+            $oi++;
+        }
+
+        if (`radioButtonGrp -q -sl radAlphaMethod` == 2) {
+            $options[$oi] = "alpha_blending=1";
+            $oi++;
+        }
+        else if (`radioButtonGrp -q -sl radAlphaMethod` == 3) {
+            $options[$oi] = "alpha_threshold="+`floatSliderGrp -q -v inpAlphaThreshold`;
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeSkel`) {
+            $options[$oi] = "inc_skeletons=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeUVAnim`) {
+            $options[$oi] = "inc_uvanim=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeSkelAnim`) {
+            $options[$oi] = "inc_skelanim=1";
+            $oi++;
+            
+            $options[$oi] = "jointspervert="+`intSliderGrp -q -v inpJointsPerVert`;
+            $oi++;
+        }
+
+        $options[$oi] = "seqsrc="+`textField -q -tx tfSequences`;
+        $oi++;
+
+        if (`checkBox -q -v chkIncludeCameras`) {
+            $oitions[$oi] = "inc_cams=1";
+            $oi++;
+        }
+
+        if (`checkBox -q -v chkIncludeLights`) {
+            $oitions[$oi] = "inc_lights=1";
+            $oi++;
+        }
+
+
+        // Join option string (equivalent of '&'.join(options) in Python)
+        $option_str = "";
+        for ($i=0;$i<size($options);$i++) {
+            if ($i==0)
+                $option_str += $options[$i];
+            else
+                $option_str += "&"+$options[$i];
+        }
+
+        // Callback
+        eval( $callback + " \"" + $option_str + "\"");
+    }
+
+    return 1;
+}
